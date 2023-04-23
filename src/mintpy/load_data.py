@@ -88,7 +88,7 @@ GEOM_XR_DSET_NAME2TEMPLATE_KEY = {
 }
 
 ###
-
+# TODO: add local zarr store path params
 ZARR_NAME2TEMPLATE_KEY = {
     'zarr_s3_uri'     : 'mintpy.load.s3URI',
     'aws_profile'     : 'mintpy.load.aws_profile',
@@ -99,13 +99,11 @@ ZARR_NAME2TEMPLATE_KEY = {
 #################################################################
 def read_inps2dict(inps):
     """Read input Namespace object info into iDict.
-
     It grab the following contents into iDict
     1. inps & all template files
     2. configurations: processor, autoPath, updateMode, compression, x/ystep
     3. extra metadata: PLATFORM, PROJECT_NAME,
     4. translate autoPath
-
     Parameters: inps  - namespace, input arguments from command line & template file
     Returns:    iDict - dict,      input arguments from command line & template file
     """
@@ -340,7 +338,6 @@ def skip_files_with_inconsistent_size(dsPathDict, pix_box=None, dsName='unwrapPh
 
 def read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2template_key):
     """Read input arguments into ifgramStackDict object.
-
     Parameters: iDict                - dict, input arguments from command line & template file
                 ds_name2template_key - dict, to relate the HDF5 dataset name to the template key
     Returns:    stackObj             - ifgramStackDict object or None
@@ -350,8 +347,6 @@ def read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2template_key):
 
     if 'mintpy.load.unwFile' in ds_name2template_key.values():
         obs_type = 'interferogram'
-    elif 'mintpy.load.s3URI' in ds_name2template_key.values():
-        obs_type = 'zarr_interferogram'
     elif 'mintpy.load.ionUnwFile' in ds_name2template_key.values():
         obs_type = 'ionosphere'
     elif 'mintpy.load.azOffFile' in ds_name2template_key.values():
@@ -470,7 +465,6 @@ def read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2template_key):
 
 def read_inps_dict2geometry_dict_object(iDict, dset_name2template_key):
     """Read input arguments into geometryDict object(s).
-
     Parameters: iDict        - dict, input arguments from command line & template file
     Returns:    geomGeoObj   - geometryDict object in geo   coordinates or None
                 geomRadarObj - geometryDict object in radar coordinates or None
@@ -485,7 +479,7 @@ def read_inps_dict2geometry_dict_object(iDict, dset_name2template_key):
         # for processors with lookup table in geo-coordinates, remove latitude/longitude
         dset_name2template_key.pop('latitude')
         dset_name2template_key.pop('longitude')
-    elif iDict['processor'] in ['aria', 'gmtsar', 'hyp3', 'hyp3_zarr', 'snap', 'cosicorr']:
+    elif iDict['processor'] in ['aria', 'gmtsar', 'hyp3', 'snap', 'cosicorr']:
         # for processors with geocoded products support only, do nothing for now.
         # check again when adding products support in radar-coordiantes
         pass
@@ -563,96 +557,14 @@ def read_inps_dict2geometry_dict_object(iDict, dset_name2template_key):
 
     return geomGeoObj, geomRadarObj
 
-def read_zarr_inps_dict2geometry_dict_object(iDict, dset_name2template_key):
-    """Read input arguments into geometryDict object(s).
-
-    Parameters: iDict        - dict, input arguments from command line & template file
-    Returns:    geomGeoObj   - geometryDict object in geo   coordinates or None
-                geomRadarObj - geometryDict object in radar coordinates or None
-    """
-
-    # eliminate lookup table dsName for input files in radar-coordinates
-    if iDict['processor'] in ['isce', 'doris']:
-        # for processors with lookup table in radar-coordinates, remove azimuth/rangeCoord
-        dset_name2template_key.pop('azimuthCoord')
-        dset_name2template_key.pop('rangeCoord')
-    elif iDict['processor'] in ['roipac', 'gamma']:
-        # for processors with lookup table in geo-coordinates, remove latitude/longitude
-        dset_name2template_key.pop('latitude')
-        dset_name2template_key.pop('longitude')
-    elif iDict['processor'] in ['aria', 'gmtsar', 'hyp3', 'hyp3_zarr', 'snap', 'cosicorr']:
-        # for processors with geocoded products support only, do nothing for now.
-        # check again when adding products support in radar-coordinates
-        pass
-    else:
-        print('Un-recognized InSAR processor: {}'.format(iDict['processor']))
-
-    # iDict --> dsPathDict
-    print('-'*50)
-    print('searching geometry xarray.Dataset variable names')
-    print('input geometry xarray.Dataset variables:')
-
-    # Open the Zarr Store containing the sbas stack
-    stack = ut.get_s3_zarr_store(iDict['mintpy.load.s3URI'], iDict['mintpy.load.aws_profile'], iDict['mintpy.load.zarr_group'])
-
-    # # get the length of the longest dset_name2template_key key
-    # max_digit = max(len(i) for i in list(dset_name2template_key.keys()))
-
-    dsVarList = [dset_name2template_key[i] for i in GEOMETRY_DSET_NAMES if i in dset_name2template_key.keys()]
- 
-    missing_geo_vars = [i for i in dsVarList if i not in stack.variables]
-    if len(missing_geo_vars) > 0:
-        print(f"WARNING: Missing Geometry Variables in Zarr Store: {missing_geo_vars}")
-
-    
-
-    # extra metadata from observations
-    # e.g. EARTH_RADIUS, HEIGHT, etc.
-    obsMetaGeo = None
-    obsMetaRadar = None
-    atr = stack.attrs
-    for obsName in OBS_DSET_NAMES:
-        if iDict[dset_name2template_key[obsName]] in stack.variables:
-            if 'Y_FIRST' in atr.keys():
-                obsMetaGeo = atr.copy()
-            else:
-                obsMetaRadar = atr.copy()
-            break
-
-    # dsPathDict --> dsGeoPathDict + dsRadarPathDict
-    dsVarList = list(stack.variables)
-    dsGeoVarList = []
-    dsRadarVarList = []
-
-    if 'Y_FIRST' in atr.keys():
-        dsGeoVarList = dsVarList
-    else:
-        dsRadarVarList = dsVarList
-
-    geomGeoObj = None
-    geomRadarObj = None
-    if len(dsGeoVarList) > 0:
-        geomGeoObj = geometryDict(
-            processor=iDict['processor'],
-            datasetDict=dsGeoPathDict,
-            extraMetadata=obsMetaGeo)
-    if len(dsRadarVarList) > 0:
-        geomRadarObj = geometryDict(
-            processor=iDict['processor'],
-            datasetDict=dsRadarPathDict,
-            extraMetadata=obsMetaRadar)
-
-    return geomGeoObj, geomRadarObj
 
 #################################################################
 def run_or_skip(outFile, inObj, box, updateMode=True, xstep=1, ystep=1, geom_obj=None):
     """Check if re-writing is necessary.
-
     Do not write HDF5 file if ALL the following meet:
         1. HDF5 file exists and is readable,
         2. HDF5 file constains all the datasets and in the same size
         3. For ifgramStackDict, HDF5 file contains all date12.
-
     Parameters: outFile    - str, path to the output HDF5 file
                 inObj      - ifgramStackDict or geometryDict, object to write
                 box        - tuple of int, bounding box in (x0, y0, x1, y1)
@@ -862,34 +774,11 @@ def prepare_metadata(iDict):
         except:
             warnings.warn('prep_gmtsar.py failed. Assuming its result exists and continue...')
 
-    # elif processor == 'hyp3_zarr':
-        # there are no metadata files to prep.
-        # the metadata for each interferogram are in an xarray.Dataset.variable 
-        # in the 'pairs' dimension (referenceDate_secondaryDate)
-        # pass
-    #     # run prep_module
-
-    #     s3_uri = iDict['mintpy.load.s3URI']
-    #     ifgram_pairs = iDict['mintpy.load.ifgramPairList']
-
-    #     for key in [i for i in iDict.keys()
-    #                 if (i.startswith('mintpy.load.')
-    #                     and i.endswith('VarName'))]:
-        
-            
-    #         if len(glob.glob(str(iDict[key]))) > 0:
-    #             # print command line
-    #             iargs = [iDict[key]]
-    #             ut.print_command_line(script_name, iargs)
-    #             # run
-    #             prep_module.main(iargs)
-
     return
 
 
 def get_extra_metadata(iDict):
     """Extra metadata with key names in MACRO_CASE to be written into stack file.
-
     Parameters: iDict     - dict, input arguments from command lines & template file
                 extraDict - dict, extra metadata from template file:
                             E.g. PROJECT_NAME, PLATFORM, ORBIT_DIRECTION, SUBSET_X/YMIN, etc.
@@ -915,17 +804,14 @@ def load_data(inps):
     start_time = time.time()
     iDict = read_inps2dict(inps)
 
-    zarr =  iDict['s3_zarr_uri'] != 'auto'
-
     ## 1. prepare metadata
-    if not zarr:
-        prepare_metadata(iDict)
-        extraDict = get_extra_metadata(iDict)
+    prepare_metadata(iDict)
+    extraDict = get_extra_metadata(iDict)
 
     # skip data writing for aria as it is included in prep_aria
     if iDict['processor'] == 'aria':
         return
-    
+
     ## 2. search & write data files
     print('-'*50)
     print('updateMode : {}'.format(iDict['updateMode']))
@@ -938,21 +824,12 @@ def load_data(inps):
     iDict = read_subset_box(iDict)
 
     # geometry in geo / radar coordinates
-    if zarr:
-        geom_dset_name2template_key = {
-            **GEOM_ZARR_DSET_NAME2TEMPLATE_KEY,
-            **IFG_ZARR_DSET_NAME2TEMPLATE_KEY,
-            **OFF_ZARR_DSET_NAME2TEMPLATE_KEY,
-        }
-        geom_geo_obj, geom_radar_obj = read_zarr_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
-    else:
-        geom_dset_name2template_key = {
-            **GEOM_DSET_NAME2TEMPLATE_KEY,
-            **IFG_DSET_NAME2TEMPLATE_KEY,
-            **OFF_DSET_NAME2TEMPLATE_KEY,
-        }
-        geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
-
+    geom_dset_name2template_key = {
+        **GEOM_DSET_NAME2TEMPLATE_KEY,
+        **IFG_DSET_NAME2TEMPLATE_KEY,
+        **OFF_DSET_NAME2TEMPLATE_KEY,
+    }
+    geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
     geom_geo_file = os.path.abspath('./inputs/geometryGeo.h5')
     geom_radar_file = os.path.abspath('./inputs/geometryRadar.h5')
 
@@ -977,21 +854,12 @@ def load_data(inps):
 
     # observations: ifgram, ion or offset
     # loop over obs stacks
-
-    if zarr:
-        stack_ds_name2tmpl_key_list = [
-            IFG_ZARR_DSET_NAME2TEMPLATE_KEY,
-            ION_ZARR_DSET_NAME2TEMPLATE_KEY,
-            OFF_ZARR_DSET_NAME2TEMPLATE_KEY
-        ]
-        stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
-    else:
-        stack_ds_name2tmpl_key_list = [
-            IFG_DSET_NAME2TEMPLATE_KEY,
-            ION_DSET_NAME2TEMPLATE_KEY,
-            OFF_DSET_NAME2TEMPLATE_KEY,
-        ]
-        stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
+    stack_ds_name2tmpl_key_list = [
+        IFG_DSET_NAME2TEMPLATE_KEY,
+        ION_DSET_NAME2TEMPLATE_KEY,
+        OFF_DSET_NAME2TEMPLATE_KEY,
+    ]
+    stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
     stack_files = [os.path.abspath(os.path.join('./inputs', x)) for x in stack_files]
     for ds_name2tmpl_opt, stack_file in zip(stack_ds_name2tmpl_key_list, stack_files):
 
