@@ -157,6 +157,8 @@ class TimeSeriesAnalysis:
            3) check loading result
            4) add custom metadata (optional, for HDF-EOS5 format only)
         """
+ 
+
         # 1) copy aux files (optional)
         self._copy_aux_file()
 
@@ -175,21 +177,21 @@ class TimeSeriesAnalysis:
         import mintpy.cli.load_data
         mintpy.cli.load_data.main(iargs)
 
-        # come back to working directory
-        os.chdir(self.workDir)
+        # # come back to working directory
+        # os.chdir(self.workDir)
 
-        # 3) check loading result
-        stack_file, geom_file, _, ion_file = ut.check_loaded_dataset(self.workDir, print_msg=True)[:4]
+        # # 3) check loading result
+        # stack_file, geom_file, _, ion_file = ut.check_loaded_dataset(self.workDir, print_msg=True)[:4]
 
-        # 4) add custom metadata (optional)
-        if self.customTemplateFile:
-            # use ut.add_attribute() instead of add_attribute.py because of
-            # better control of special metadata, such as SUBSET_X/YMIN
-            msg = f'updating metadata based on custom template file {os.path.basename(self.customTemplateFile)}'
-            for fname in [stack_file, ion_file, geom_file]:
-                if fname:
-                    print(f'{msg} for file: {os.path.basename(fname)}')
-                    ut.add_attribute(fname, self.customTemplate)
+        # # 4) add custom metadata (optional)
+        # if self.customTemplateFile:
+        #     # use ut.add_attribute() instead of add_attribute.py because of
+        #     # better control of special metadata, such as SUBSET_X/YMIN
+        #     msg = f'updating metadata based on custom template file {os.path.basename(self.customTemplateFile)}'
+        #     for fname in [stack_file, ion_file, geom_file]:
+        #         if fname:
+        #             print(f'{msg} for file: {os.path.basename(fname)}')
+        #             ut.add_attribute(fname, self.customTemplate)
 
 
     def _copy_aux_file(self):

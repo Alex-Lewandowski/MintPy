@@ -12,16 +12,15 @@ import time
 import warnings
 
 from mintpy import subset
+from mintpy.load_data_xarray import load_data_xarray
 from mintpy.defaults import auto_path
 from mintpy.objects import (
-    GEOMETRY_DSET_NAMES,
-    IFGRAM_DSET_NAMES,
     geometry,
     ifgramStack,
     sensor,
 )
 from mintpy.objects.stackDict import geometryDict, ifgramDict, ifgramStackDict
-from mintpy.utils import ptime, readfile, utils, zarr_utils as ut
+from mintpy.utils import ptime, readfile, utils as ut
 
 #################################################################
 PROCESSOR_LIST = ['isce', 'aria', 'hyp3', 'hyp3_zarr', 'gmtsar', 'snap', 'gamma', 'roipac', 'cosicorr']
@@ -35,16 +34,6 @@ IFG_DSET_NAME2TEMPLATE_KEY = {
     'connectComponent': 'mintpy.load.connCompFile',
     'wrapPhase'       : 'mintpy.load.intFile',
     'magnitude'       : 'mintpy.load.magFile',
-}
-
-IFG_XR_DSET_NAME2TEMPLATE_KEY = {
-    'sbas_pair_list'  : 'mintpy.load.sbasPairList',
-    'ifgram_pairs'    : 'mintpy.load.ifgramPairCoord',
-    'unwrapPhase'     : 'mintpy.load.unwVarName',
-    'coherence'       : 'mintpy.load.corVarName',
-    'connectComponent': 'mintpy.load.connCompVarName',
-    'wrapPhase'       : 'mintpy.load.intVarName',
-    'magnitude'       : 'mintpy.load.magVarName',
 }
 
 ###
@@ -78,21 +67,6 @@ GEOM_DSET_NAME2TEMPLATE_KEY = {
     'shadowMask'      : 'mintpy.load.shadowMaskFile',
     'waterMask'       : 'mintpy.load.waterMaskFile',
     'bperp'           : 'mintpy.load.bperpFile',
-}
-
-GEOM_XR_DSET_NAME2TEMPLATE_KEY = {
-    'height'          : 'mintpy.load.demVarName',
-    'incidenceAngle'  : 'mintpy.load.incAngleVarName',
-    'azimuthAngle'    : 'mintpy.load.azAngleVarName',
-    'waterMask'       : 'mintpy.load.waterMaskVarName',
-}
-
-###
-# TODO: add local zarr store path params
-ZARR_NAME2TEMPLATE_KEY = {
-    'zarr_s3_uri'     : 'mintpy.load.s3URI',
-    'aws_profile'     : 'mintpy.load.aws_profile',
-    'zarr_group'      : 'mintpy.load.zarr_group',
 }
 
 
@@ -804,9 +778,14 @@ def load_data(inps):
     start_time = time.time()
     iDict = read_inps2dict(inps)
 
+    zarr = "zarr" in iDict['processor']
     ## 1. prepare metadata
-    prepare_metadata(iDict)
+    if not zarr:
+        prepare_metadata(iDict)
     extraDict = get_extra_metadata(iDict)
+
+    # for i in iDict:
+    #     print(i)
 
     # skip data writing for aria as it is included in prep_aria
     if iDict['processor'] == 'aria':
@@ -823,69 +802,72 @@ def load_data(inps):
     # read subset info [need the metadata from above]
     iDict = read_subset_box(iDict)
 
-    # geometry in geo / radar coordinates
-    geom_dset_name2template_key = {
-        **GEOM_DSET_NAME2TEMPLATE_KEY,
-        **IFG_DSET_NAME2TEMPLATE_KEY,
-        **OFF_DSET_NAME2TEMPLATE_KEY,
-    }
-    geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
-    geom_geo_file = os.path.abspath('./inputs/geometryGeo.h5')
-    geom_radar_file = os.path.abspath('./inputs/geometryRadar.h5')
+    if zarr:
+        load_data_xarray(iDict)
 
-    if run_or_skip(geom_geo_file, geom_geo_obj, iDict['box4geo'], **kwargs) == 'run':
-        geom_geo_obj.write2hdf5(
-            outputFile=geom_geo_file,
-            access_mode='w',
-            box=iDict['box4geo'],
-            xstep=iDict['xstep'],
-            ystep=iDict['ystep'],
-            compression='lzf')
+    # # geometry in geo / radar coordinates
+    # geom_dset_name2template_key = {
+    #     **GEOM_DSET_NAME2TEMPLATE_KEY,
+    #     **IFG_DSET_NAME2TEMPLATE_KEY,
+    #     **OFF_DSET_NAME2TEMPLATE_KEY,
+    # }
+    # geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
+    # geom_geo_file = os.path.abspath('./inputs/geometryGeo.h5')
+    # geom_radar_file = os.path.abspath('./inputs/geometryRadar.h5')
 
-    if run_or_skip(geom_radar_file, geom_radar_obj, iDict['box'], **kwargs) == 'run':
-        geom_radar_obj.write2hdf5(
-            outputFile=geom_radar_file,
-            access_mode='w',
-            box=iDict['box'],
-            xstep=iDict['xstep'],
-            ystep=iDict['ystep'],
-            compression='lzf',
-            extra_metadata=extraDict)
+    # if run_or_skip(geom_geo_file, geom_geo_obj, iDict['box4geo'], **kwargs) == 'run':
+    #     geom_geo_obj.write2hdf5(
+    #         outputFile=geom_geo_file,
+    #         access_mode='w',
+    #         box=iDict['box4geo'],
+    #         xstep=iDict['xstep'],
+    #         ystep=iDict['ystep'],
+    #         compression='lzf')
 
-    # observations: ifgram, ion or offset
-    # loop over obs stacks
-    stack_ds_name2tmpl_key_list = [
-        IFG_DSET_NAME2TEMPLATE_KEY,
-        ION_DSET_NAME2TEMPLATE_KEY,
-        OFF_DSET_NAME2TEMPLATE_KEY,
-    ]
-    stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
-    stack_files = [os.path.abspath(os.path.join('./inputs', x)) for x in stack_files]
-    for ds_name2tmpl_opt, stack_file in zip(stack_ds_name2tmpl_key_list, stack_files):
+    # if run_or_skip(geom_radar_file, geom_radar_obj, iDict['box'], **kwargs) == 'run':
+    #     geom_radar_obj.write2hdf5(
+    #         outputFile=geom_radar_file,
+    #         access_mode='w',
+    #         box=iDict['box'],
+    #         xstep=iDict['xstep'],
+    #         ystep=iDict['ystep'],
+    #         compression='lzf',
+    #         extra_metadata=extraDict)
 
-        # initiate dict objects
-        stack_obj = read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2tmpl_opt)
+    # # observations: ifgram, ion or offset
+    # # loop over obs stacks
+    # stack_ds_name2tmpl_key_list = [
+    #     IFG_DSET_NAME2TEMPLATE_KEY,
+    #     ION_DSET_NAME2TEMPLATE_KEY,
+    #     OFF_DSET_NAME2TEMPLATE_KEY,
+    # ]
+    # stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
+    # stack_files = [os.path.abspath(os.path.join('./inputs', x)) for x in stack_files]
+    # for ds_name2tmpl_opt, stack_file in zip(stack_ds_name2tmpl_key_list, stack_files):
 
-        # use geom_obj as size reference while loading ionosphere
-        geom_obj = None
-        if os.path.basename(stack_file).startswith('ion'):
-            geom_obj = geom_geo_obj if iDict['geocoded'] else geom_radar_obj
+    #     # initiate dict objects
+    #     stack_obj = read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2tmpl_opt)
 
-        # write dict objects to HDF5 files
-        if run_or_skip(stack_file, stack_obj, iDict['box'], geom_obj=geom_obj, **kwargs) == 'run':
-            stack_obj.write2hdf5(
-                outputFile=stack_file,
-                access_mode='w',
-                box=iDict['box'],
-                xstep=iDict['xstep'],
-                ystep=iDict['ystep'],
-                mli_method=iDict['method'],
-                compression=iDict['compression'],
-                extra_metadata=extraDict,
-                geom_obj=geom_obj)
+    #     # use geom_obj as size reference while loading ionosphere
+    #     geom_obj = None
+    #     if os.path.basename(stack_file).startswith('ion'):
+    #         geom_obj = geom_geo_obj if iDict['geocoded'] else geom_radar_obj
 
-    # used time
-    m, s = divmod(time.time()-start_time, 60)
-    print(f'time used: {m:02.0f} mins {s:02.1f} secs.\n')
+    #     # write dict objects to HDF5 files
+    #     if run_or_skip(stack_file, stack_obj, iDict['box'], geom_obj=geom_obj, **kwargs) == 'run':
+    #         stack_obj.write2hdf5(
+    #             outputFile=stack_file,
+    #             access_mode='w',
+    #             box=iDict['box'],
+    #             xstep=iDict['xstep'],
+    #             ystep=iDict['ystep'],
+    #             mli_method=iDict['method'],
+    #             compression=iDict['compression'],
+    #             extra_metadata=extraDict,
+    #             geom_obj=geom_obj)
 
-    return
+    # # used time
+    # m, s = divmod(time.time()-start_time, 60)
+    # print(f'time used: {m:02.0f} mins {s:02.1f} secs.\n')
+
+    # return
