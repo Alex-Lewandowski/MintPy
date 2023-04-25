@@ -804,70 +804,71 @@ def load_data(inps):
 
     if zarr:
         load_data_xarray(iDict)
+        return
 
-    # # geometry in geo / radar coordinates
-    # geom_dset_name2template_key = {
-    #     **GEOM_DSET_NAME2TEMPLATE_KEY,
-    #     **IFG_DSET_NAME2TEMPLATE_KEY,
-    #     **OFF_DSET_NAME2TEMPLATE_KEY,
-    # }
-    # geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
-    # geom_geo_file = os.path.abspath('./inputs/geometryGeo.h5')
-    # geom_radar_file = os.path.abspath('./inputs/geometryRadar.h5')
+    # geometry in geo / radar coordinates
+    geom_dset_name2template_key = {
+        **GEOM_DSET_NAME2TEMPLATE_KEY,
+        **IFG_DSET_NAME2TEMPLATE_KEY,
+        **OFF_DSET_NAME2TEMPLATE_KEY,
+    }
+    geom_geo_obj, geom_radar_obj = read_inps_dict2geometry_dict_object(iDict, geom_dset_name2template_key)
+    geom_geo_file = os.path.abspath('./inputs/geometryGeo.h5')
+    geom_radar_file = os.path.abspath('./inputs/geometryRadar.h5')
 
-    # if run_or_skip(geom_geo_file, geom_geo_obj, iDict['box4geo'], **kwargs) == 'run':
-    #     geom_geo_obj.write2hdf5(
-    #         outputFile=geom_geo_file,
-    #         access_mode='w',
-    #         box=iDict['box4geo'],
-    #         xstep=iDict['xstep'],
-    #         ystep=iDict['ystep'],
-    #         compression='lzf')
+    if run_or_skip(geom_geo_file, geom_geo_obj, iDict['box4geo'], **kwargs) == 'run':
+        geom_geo_obj.write2hdf5(
+            outputFile=geom_geo_file,
+            access_mode='w',
+            box=iDict['box4geo'],
+            xstep=iDict['xstep'],
+            ystep=iDict['ystep'],
+            compression='lzf')
 
-    # if run_or_skip(geom_radar_file, geom_radar_obj, iDict['box'], **kwargs) == 'run':
-    #     geom_radar_obj.write2hdf5(
-    #         outputFile=geom_radar_file,
-    #         access_mode='w',
-    #         box=iDict['box'],
-    #         xstep=iDict['xstep'],
-    #         ystep=iDict['ystep'],
-    #         compression='lzf',
-    #         extra_metadata=extraDict)
+    if run_or_skip(geom_radar_file, geom_radar_obj, iDict['box'], **kwargs) == 'run':
+        geom_radar_obj.write2hdf5(
+            outputFile=geom_radar_file,
+            access_mode='w',
+            box=iDict['box'],
+            xstep=iDict['xstep'],
+            ystep=iDict['ystep'],
+            compression='lzf',
+            extra_metadata=extraDict)
 
-    # # observations: ifgram, ion or offset
-    # # loop over obs stacks
-    # stack_ds_name2tmpl_key_list = [
-    #     IFG_DSET_NAME2TEMPLATE_KEY,
-    #     ION_DSET_NAME2TEMPLATE_KEY,
-    #     OFF_DSET_NAME2TEMPLATE_KEY,
-    # ]
-    # stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
-    # stack_files = [os.path.abspath(os.path.join('./inputs', x)) for x in stack_files]
-    # for ds_name2tmpl_opt, stack_file in zip(stack_ds_name2tmpl_key_list, stack_files):
+    # observations: ifgram, ion or offset
+    # loop over obs stacks
+    stack_ds_name2tmpl_key_list = [
+        IFG_DSET_NAME2TEMPLATE_KEY,
+        ION_DSET_NAME2TEMPLATE_KEY,
+        OFF_DSET_NAME2TEMPLATE_KEY,
+    ]
+    stack_files = ['ifgramStack.h5', 'ionStack.h5', 'offsetStack.h5']
+    stack_files = [os.path.abspath(os.path.join('./inputs', x)) for x in stack_files]
+    for ds_name2tmpl_opt, stack_file in zip(stack_ds_name2tmpl_key_list, stack_files):
 
-    #     # initiate dict objects
-    #     stack_obj = read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2tmpl_opt)
+        # initiate dict objects
+        stack_obj = read_inps_dict2ifgram_stack_dict_object(iDict, ds_name2tmpl_opt)
 
-    #     # use geom_obj as size reference while loading ionosphere
-    #     geom_obj = None
-    #     if os.path.basename(stack_file).startswith('ion'):
-    #         geom_obj = geom_geo_obj if iDict['geocoded'] else geom_radar_obj
+        # use geom_obj as size reference while loading ionosphere
+        geom_obj = None
+        if os.path.basename(stack_file).startswith('ion'):
+            geom_obj = geom_geo_obj if iDict['geocoded'] else geom_radar_obj
 
-    #     # write dict objects to HDF5 files
-    #     if run_or_skip(stack_file, stack_obj, iDict['box'], geom_obj=geom_obj, **kwargs) == 'run':
-    #         stack_obj.write2hdf5(
-    #             outputFile=stack_file,
-    #             access_mode='w',
-    #             box=iDict['box'],
-    #             xstep=iDict['xstep'],
-    #             ystep=iDict['ystep'],
-    #             mli_method=iDict['method'],
-    #             compression=iDict['compression'],
-    #             extra_metadata=extraDict,
-    #             geom_obj=geom_obj)
+        # write dict objects to HDF5 files
+        if run_or_skip(stack_file, stack_obj, iDict['box'], geom_obj=geom_obj, **kwargs) == 'run':
+            stack_obj.write2hdf5(
+                outputFile=stack_file,
+                access_mode='w',
+                box=iDict['box'],
+                xstep=iDict['xstep'],
+                ystep=iDict['ystep'],
+                mli_method=iDict['method'],
+                compression=iDict['compression'],
+                extra_metadata=extraDict,
+                geom_obj=geom_obj)
 
-    # # used time
-    # m, s = divmod(time.time()-start_time, 60)
-    # print(f'time used: {m:02.0f} mins {s:02.1f} secs.\n')
+    # used time
+    m, s = divmod(time.time()-start_time, 60)
+    print(f'time used: {m:02.0f} mins {s:02.1f} secs.\n')
 
-    # return
+    return

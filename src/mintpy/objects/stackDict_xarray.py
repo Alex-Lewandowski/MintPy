@@ -42,7 +42,10 @@ def read_subset_box_xarray(iDict: Dict, stack: xr.Dataset):
         iDict (updated with bboxes)
         """
         # Read subset info from template
-        pix_box, geo_box = subset.read_subset_template2box(iDict['template_file'])
+        template_path = [i for i in iDict['template_file'] if "smallbaselineApp.cfg" in i]
+        print(template_path)
+
+        pix_box, geo_box = subset.read_subset_template2box(template_path[0])
         
         iDict['geo_box'] = None
         iDict['pix_box'] = None        
@@ -69,11 +72,10 @@ class geometryXarrayDict:
         self.stack = stack
         self.iDict = iDict
 
-        meta_vars = [i for i in stack.variables if i not in datasetDict.values() and i not in ['x', 'y', 'pairs']]
+        meta_vars = [i for i in stack.variables if i not in {k:v for (k,v) in zip(iDict.keys(), iDict.values()) if k in datasetDict.values()}.values() and i not in ['x', 'y']]
         self.metadata = {}
         for m in meta_vars:
             self.metadata[m] = stack[m].to_numpy().tolist()
-
 
     def read(self, dsName, box=None, xstep=1, ystep=1):
         data = self.stack[self.datasetDict[dsName]].to_numpy()
@@ -120,6 +122,9 @@ class geometryXarrayDict:
 
             ###############################
             for dsName in self.datasetDict.keys():
+                if self.iDict[self.datasetDict[dsName]] == 'auto':
+                    continue
+                
                 dsDataType = np.float32
                 if dsName.lower().endswith('mask'):
                     dsDataType = np.bool_
@@ -133,12 +138,12 @@ class geometryXarrayDict:
                 # read data
                 if self.iDict['geo_box']:
                     bbox = self.iDict['geo_box']
-                    data = stack.sel(x=slice(bbox[0], bbox[2]), y=slice(bbox[1], bbox[3]))[self.datasetDict[dsName]].to_numpy()
+                    data = self.stack.sel(x=slice(bbox[0], bbox[2]), y=slice(bbox[1], bbox[3]))[self.iDict[self.datasetDict[dsName]]].to_numpy()
                 elif self.iDict['pix_box']:
                     bbox = self.iDict['pix_box']
-                    data = stack.isel(x=slice(bbox[0], bbox[2]), y=slice(bbox[1], bbox[3]))[self.datasetDict[dsName]].to_numpy()
+                    data = self.stack.isel(x=slice(bbox[0], bbox[2]), y=slice(bbox[1], bbox[3]))[self.iDict[self.datasetDict[dsName]]].to_numpy()
                 else:
-                    data = stack[self.datasetDict[dsName]].to_numpy()
+                    data = self.stack[self.iDict[self.datasetDict[dsName]]].to_numpy()
                     
 
                 if dsName == 'height':
