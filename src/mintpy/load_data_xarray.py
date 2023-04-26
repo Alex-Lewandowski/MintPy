@@ -7,7 +7,7 @@ from mintpy.defaults import auto_path
 from mintpy.objects import sensor, geometry, ifgramStack
 from mintpy.objects.coord import coordinate
 from mintpy import load_data
-from mintpy.objects.stackDict_xarray import geometryXarrayDict
+from mintpy.objects.stackDict_xarray import geometryXarrayDict, ifgramStackXarrayDict
 from mintpy.utils import ptime, readfile, utils, zarr_utils as ut
 from mintpy.utils import utils1 as ut1
 
@@ -15,7 +15,6 @@ GEO_H5_PATH = Path.cwd()/"inputs/geometryGeo.h5"
 
 IFG_XR_DSET_NAME2TEMPLATE_KEY = {
     'sbas_pair_list'  : 'mintpy.load.sbasPairList',
-    'ifgram_pairs'    : 'mintpy.load.ifgramPairCoord',
     'unwrapPhase'     : 'mintpy.load.unwVarName',
     'coherence'       : 'mintpy.load.corVarName',
     # 'connectComponent': 'mintpy.load.connCompVarName',
@@ -53,66 +52,6 @@ def get_size(stack, box=None, xstep=1, ystep=1):
 
         return length, width
 
-# def run_or_skip(out_path, inObj, ds_type, box, xstep=1, ystep=1):
-#     """Check if re-writing is necessary.
-#     Do not write HDF5 file if ALL the following meet:
-#         1. HDF5 file exists and is readable,
-#         2. HDF5 file constains all the datasets and in the same size
-#         3. For ifgramStackDict, HDF5 file contains all date12.
-#     Parameters: outFile    - str, path to the output HDF5 file
-#                 inObj      - ifgramStackDict or geometryDict, object to write
-#                 box        - tuple of int, bounding box in (x0, y0, x1, y1)
-#                 updateMode - bool
-#                 x/ystep    - int
-#                 geom_obj   - geometryDict object or None, for ionosphere only
-#     Returns:    flag       - str, run or skip
-#     """
-
-#     flag = 'run'
-
-#     if ut1.run_or_skip(str(out_path), readable=True) == 'skip':
-
-
-#         kwargs = dict(box=box, xstep=xstep, ystep=ystep)
-
-#         if ds_type == 'ifgramStack':
-#             # in_size = get_size(stack, **kwargs)[1:]
-#             # in_dset_list = inObj.get_dataset_list()
-#             # in_date12_list = inObj.get_date12_list()
-
-#             # outObj = ifgramStack(out_path)
-#             # outObj.open(print_msg=False)
-#             # out_size = (outObj.length, outObj.width)
-#             # out_dset_list = outObj.datasetNames
-#             # out_date12_list = outObj.date12List
-
-#             # if (out_size[1:] == in_size[1:]
-#             #         and set(in_dset_list).issubset(set(out_dset_list))
-#             #         and set(in_date12_list).issubset(set(out_date12_list))):
-#             #     print('All date12   exists in file {} with same size as required,'
-#             #           ' no need to re-load.'.format(os.path.basename(out_path)))
-#             #     flag = 'skip'
-#             pass
-
-#         elif ds_type == 'geometry':
-#             # flag = "geo_test"
-
-#             # in_size = inObj.get_size(**kwargs)
-#             # in_dset_list = inObj.get_dataset_list()
-
-#             # outObj = geometry(out_path)
-#             # outObj.open(print_msg=False)
-#             # out_size = (outObj.length, outObj.width)
-#             # out_dset_list = outObj.datasetNames
-
-#             # if (out_size == in_size
-#             #         and set(in_dset_list).issubset(set(out_dset_list))):
-#             #     print('All datasets exists in file {} with same size as required,'
-#             #           ' no need to re-load.'.format(os.path.basename(out_path)))
-#             #     flag = 'skip'
-
-#     return flag
-
 def read_subset_box_xarray(iDict: Dict, stack: xr.Dataset):
         """Reads mintpy.subset.yx and mintpy.subset.lalo from a template file and
         Updates iDict with a 'geo_box' and 'pix_box' if they are contained by the Dataset
@@ -145,9 +84,15 @@ def read_subset_box_xarray(iDict: Dict, stack: xr.Dataset):
 def load_data_xarray(iDict):
     """load data into HDF5 files."""
 
-    stack = ut.get_s3_zarr_store(
+    geo_stack = ut.get_s3_zarr_store(
         iDict['mintpy.load.s3URI'],
-        iDict['mintpy.load.zarr_group'],
+        f"{iDict['mintpy.load.zarr_group']}/geometry",
+        iDict['mintpy.load.aws_profile']
+          )
+    
+    sbas_stack = ut.get_s3_zarr_store(
+        iDict['mintpy.load.s3URI'],
+        f"{iDict['mintpy.load.zarr_group']}/sbas",
         iDict['mintpy.load.aws_profile']
           )
 
@@ -168,16 +113,24 @@ def load_data_xarray(iDict):
     elif 'pix_box' in iDict.keys() and iDict['pix_box']:
         box = iDict['pix_box']
 
-    geo_dict = geometryXarrayDict(stack, GEOM_XR_DSET_NAME2TEMPLATE_KEY, iDict)
+    # geo_dict = geometryXarrayDict(geo_stack, GEOM_XR_DSET_NAME2TEMPLATE_KEY, iDict)
     
-    if load_data.run_or_skip(str(GEO_H5_PATH), geo_dict, stack, box, **kwargs) == 'run':
-        geo_dict.write2hdf5(
-            GEO_H5_PATH, 
-            access_mode='w',
-            box=box,
-            xstep=iDict['xstep'],
-            ystep=iDict['ystep'],
-            compression='lzf',
-             )
+    # if load_data.run_or_skip(str(GEO_H5_PATH), geo_dict, geo_stack, box, **kwargs) == 'run':
+    #     geo_dict.write2hdf5(
+    #         GEO_H5_PATH, 
+    #         access_mode='w',
+    #         box=box,
+    #         xstep=iDict['xstep'],
+    #         ystep=iDict['ystep'],
+    #         compression='lzf',
+    #          )
+        
+
+
+    sbas_dict = ifgramStackXarrayDict(sbas_stack, IFG_XR_DSET_NAME2TEMPLATE_KEY, iDict)
+
+    sbas_dict.write2hdf5(box=box)
+        
+    
 
     # pass
