@@ -6,6 +6,8 @@
 
 import s3fs
 import xarray as xr
+from pathlib import Path
+from typing import Union
 
 def get_s3_zarr_store(s3_uri: str, group: str, profile: str='default') -> xr.Dataset:
     """
@@ -25,5 +27,20 @@ def get_s3_zarr_store(s3_uri: str, group: str, profile: str='default') -> xr.Dat
     s3 = s3fs.S3FileSystem(profile=profile)
     store = s3fs.S3Map(root=s3_uri, s3=s3, check=False)
     return xr.open_zarr(store=store, group=group)
+
+def get_local_zarr_store(store_path: str, group: Union[str, Path]=None) -> xr.Dataset:
+    """
+    Open a local Zarr store 
+
+    Parameters:
+    store_path: a string of the S3 bucket's URI
+    group: a string to the group containing the Zarr Store
+    profile: a string of aws profile to use for authentication
+
+    Returns:
+        an xarray.Dataset of zarr store
+    """
+
+    return xr.open_zarr(store_path, group=group, consolidated=True)
 
    

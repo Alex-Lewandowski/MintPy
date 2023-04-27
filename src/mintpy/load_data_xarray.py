@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Dict
 import xarray as xr
+import zarr
 
 from mintpy import subset
 from mintpy.defaults import auto_path
@@ -33,6 +34,7 @@ GEOM_XR_DSET_NAME2TEMPLATE_KEY = {
 # TODO: add local zarr store path params
 ZARR_NAME2TEMPLATE_KEY = {
     'zarr_s3_uri'     : 'mintpy.load.s3URI',
+    'local_zarr_dir' : 'mintpy.load.localZarrDir',
     'aws_profile'     : 'mintpy.load.aws_profile',
     'zarr_group'      : 'mintpy.load.zarr_group',
 }
@@ -84,18 +86,45 @@ def read_subset_box_xarray(iDict: Dict, stack: xr.Dataset):
 def load_data_xarray(iDict):
     """load data into HDF5 files."""
 
-    geo_stack = ut.get_s3_zarr_store(
-        iDict['mintpy.load.s3URI'],
-        f"{iDict['mintpy.load.zarr_group']}/geometry",
-        iDict['mintpy.load.aws_profile']
-          )
-    
-    sbas_stack = ut.get_s3_zarr_store(
-        iDict['mintpy.load.s3URI'],
-        f"{iDict['mintpy.load.zarr_group']}/sbas",
-        iDict['mintpy.load.aws_profile']
-          )
-
+    geo_group = "geometry" if iDict['mintpy.load.zarr_group'] == "auto" else f"{iDict['mintpy.load.zarr_group']}/geometry"
+    sbas_group = "sbas" if iDict['mintpy.load.zarr_group'] == "auto" else f"{iDict['mintpy.load.zarr_group']}/sbas"
+    if iDict['mintpy.load.s3URI'] == 'auto':
+        try:
+            geo_stack = ut.get_local_zarr_store(
+                iDict['mintpy.load.localZarrDir'],
+                geo_group
+                )
+        except zarr.errors.PathNotFoundError:
+             print('"geometry" group not found in zarr store')
+             pass
+        try:
+            sbas_stack = ut.get_local_zarr_store(
+                iDict['mintpy.load.localZarrDir'],
+                sbas_group
+                )
+        except zarr.errors.PathNotFoundError:
+            print('"sbas" group not found in zarr store')
+            pass
+    else:
+        try:
+            geo_stack = ut.get_s3_zarr_store(
+                iDict['mintpy.load.s3URI'],
+                geo_group,
+                iDict['mintpy.load.aws_profile']
+                )
+        except zarr.errors.PathNotFoundError:
+             print('"geometry" group not found in zarr store')
+             pass
+        try:
+            sbas_stack = ut.get_s3_zarr_store(
+                iDict['mintpy.load.s3URI'],
+                sbas_group,
+                iDict['mintpy.load.aws_profile']
+                )
+        except zarr.errors.PathNotFoundError:
+            print('"sbas" group not found in zarr store')
+            pass
+        
     ## search & write data files
     print('-'*50)
     print('updateMode : {}'.format(iDict['updateMode']))

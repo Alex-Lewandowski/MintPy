@@ -74,6 +74,8 @@ class geometryXarrayDict:
         self.datasetDict = datasetDict
         self.stack = stack
         self.iDict = iDict
+        # retrieve subset bboxes from template
+        self.iDict = read_subset_box_xarray(self.iDict, self.stack)
 
         meta_vars = [i for i in stack.variables if i not in {k:v for (k,v) in zip(iDict.keys(), iDict.values()) if k in datasetDict.values()}.values() and i not in ['x', 'y']]
         self.metadata = {}
@@ -135,11 +137,7 @@ class geometryXarrayDict:
                     dsDataType = np.bool_
                 dsShape = (length, width)
                 print((f'create dataset /{dsName:<{maxDigit}} of {str(dsDataType):<25} in size of {dsShape} with compression = {str(compression)}'))
-       
-                # retrieve subset bboxes from template
-                self.iDict = read_subset_box_xarray(self.iDict, self.stack)
                       
-                bbox = None
                 # read data
                 if self.iDict['geo_box']:
                     bbox = self.iDict['geo_box']
@@ -218,9 +216,22 @@ class ifgramStackXarrayDict:
     def __init__(self, stack: xr.Dataset, datasetDict, iDict: Dict, name: str='ifgramStack'):
         self.name = name
         self.datasetDict = datasetDict
+
         self.stack = stack
+
+        print(f"stack.variables: {stack.variables}")
+
+        # # DEV store copy to local
+        # import zarr
+        # compressor = zarr.Blosc(cname='zstd', clevel=3)
+        # encoding = {vname: {'compressor': compressor} for vname in self.stack.data_vars}
+        # self.stack.to_zarr(Path.cwd()/'store', group='sbas', mode='w', consolidated=True, encoding=encoding)
+
+
         self.iDict = iDict
 
+        # retrieve subset bboxes from template
+        self.iDict = read_subset_box_xarray(self.iDict, self.stack)
 
         self.sbas_pairs = iDict['mintpy.load.sbasPairList']
         if self.sbas_pairs == 'auto':
@@ -249,6 +260,11 @@ class ifgramStackXarrayDict:
         # update due to multilook
         length = length // ystep
         width = width // xstep
+
+    def get_perp_baseline(self, date_pair):
+        bperp_top = float(self.stack.sel(pairs=date_pair)['unw_phase']['P_BASELINE_TOP_HDR'].to_numpy.tolist()[0])
+        bperp_bottom = float(self.stack.sel(pairs=date_pair)['unw_phase']['P_BASELINE_BOTTOM_HDR'].to_numpy.tolist()[0])
+        return (bperp_top + bperp_bottom) / 2.0
 
     def write2hdf5(self, outputFile='ifgramStack.h5', access_mode='w', box=None, xstep=1, ystep=1, mli_method='nearest',
                    compression='lzf', geom_obj=None):
@@ -323,12 +339,20 @@ class ifgramStackXarrayDict:
                     for i, pair in enumerate(self.sbas_pairs):
                         prog_bar.update(i+1, suffix=f'{pair}')
 
-    ## I am here
-
                         # read and/or resize
-                
 
-                        data = self.stack.sel(pairs=pair)[self.iDict[dsName]].to_numpy()
+                        # ## You are here need to subset to box
+                        # data = self.stack.sel(pairs=pair)[self.iDict[dsName]].to_numpy()
+
+                        # read data
+                        if self.iDict['geo_box']:
+                            bbox = self.iDict['geo_box']
+                            data = self.stack.sel(pairs=pair, x=slice(bbox[0], bbox[2]), y=slice(bbox[1], bbox[3]))[self.iDict[dsName]].to_numpy()
+                        elif self.iDict['pix_box']:
+                            bbox = self.iDict['pix_box']
+                            data = self.stack.isel(pairs=0, x=slice(bbox[0], bbox[2]), y=slice(bbox[1], bbox[3]))[self.iDict[dsName]].to_numpy()
+                        else:
+                            data = self.stack.sel(pairs=pair)[self.iDict[dsName]].to_numpy()
 
                         # write
                         ds[i, :, :] = data
@@ -336,76 +360,72 @@ class ifgramStackXarrayDict:
                     ds.attrs['MODIFICATION_TIME'] = str(time.time())
                     prog_bar.close()
 
-            #     ###############################
-            #     # 2D dataset containing reference and secondary dates of all pairs
-            #     dsName = 'date'
-            #     dsDataType = np.string_
-            #     dsShape = (numIfgram, 2)
-            #     print('create dataset /{d:<{w}} of {t:<25} in size of {s}'.format(d=dsName,
-            #                                                                       w=maxDigit,
-            #                                                                       t=str(dsDataType),
-            #                                                                       s=dsShape))
-            #     data = np.array(self.pairs, dtype=dsDataType)
-            #     f.create_dataset(dsName, data=data)
+            ##############################
+            # 2D dataset containing reference and secondary dates of all pairs
+            dsName = 'date'
+            # dsDataType = np.string_
+            # dsShape = (len(self.sbas_pairs), 2)
+            # print(f'create dataset /{dsName} of {str(dsDataType)} in size of {dsShape}')
+            f.create_dataset(dsName, data=self.sbas_pairs).to_numpy()
 
-            #     ###############################
-            #     # 1D dataset containing perpendicular baseline of all pairs
-            #     dsName = 'bperp'
-            #     dsDataType = np.float32
-            #     dsShape = (numIfgram,)
-            #     print('create dataset /{d:<{w}} of {t:<25} in size of {s}'.format(d=dsName,
-            #                                                                       w=maxDigit,
-            #                                                                       t=str(dsDataType),
-            #                                                                       s=dsShape))
-            #     # get bperp
-            #     data = np.zeros(numIfgram, dtype=dsDataType)
-            #     for i in range(numIfgram):
-            #         ifgramObj = self.pairsDict[self.pairs[i]]
-            #         data[i] = ifgramObj.get_perp_baseline(family=self.dsName0)
-            #     # write
-            #     f.create_dataset(dsName, data=data)
+            # ###############################
+            # # 1D dataset containing perpendicular baseline of all pairs
+            # dsName = 'bperp'
+            # dsDataType = np.float32
+            # dsShape = (numIfgram,)
+            # print('create dataset /{d:<{w}} of {t:<25} in size of {s}'.format(d=dsName,
+            #                                                                     w=maxDigit,
+            #                                                                     t=str(dsDataType),
+            #                                                                     s=dsShape))
+            # # get bperp
+            # data = np.zeros(numIfgram, dtype=dsDataType)
+            # for i in range(numIfgram):
+            #     ifgramObj = self.pairsDict[self.pairs[i]]
+            #     data[i] = ifgramObj.get_perp_baseline(family=self.dsName0)
+            # # write
+            # f.create_dataset(dsName, data=data)
 
-            #     ###############################
-            #     # 1D dataset containing bool value of dropping the interferograms or not
-            #     dsName = 'dropIfgram'
-            #     dsDataType = np.bool_
-            #     dsShape = (numIfgram,)
-            #     print('create dataset /{d:<{w}} of {t:<25} in size of {s}'.format(d=dsName,
-            #                                                                       w=maxDigit,
-            #                                                                       t=str(dsDataType),
-            #                                                                       s=dsShape))
-            #     data = np.ones(dsShape, dtype=dsDataType)
-            #     f.create_dataset(dsName, data=data)
+            # ###############################
+            # # 1D dataset containing bool value of dropping the interferograms or not
+            # dsName = 'dropIfgram'
+            # dsDataType = np.bool_
+            # dsShape = (numIfgram,)
+            # print('create dataset /{d:<{w}} of {t:<25} in size of {s}'.format(d=dsName,
+            #                                                                     w=maxDigit,
+            #                                                                     t=str(dsDataType),
+            #                                                                     s=dsShape))
+            # data = np.ones(dsShape, dtype=dsDataType)
+            # f.create_dataset(dsName, data=data)
 
-            #     ###############################
-            #     # Attributes
-            #     # read metadata from original data file w/o resize/subset/multilook
-            
-            #     if extra_metadata:
-            #         meta.update(extra_metadata)
-            #         print(f'add extra metadata: {extra_metadata}')
+            # ###############################
+            # # Attributes
+            # # read metadata from original data file w/o resize/subset/multilook
 
-            #     # update metadata due to resize
-            #     # for low resolution ionosphere from isce2/topsStack
-            #     if resize2shape:
-            #         print('update metadata due to resize')
-            #         meta = attr.update_attribute4resize(meta, resize2shape)
+            # if extra_metadata:
+            #     meta.update(extra_metadata)
+            #     print(f'add extra metadata: {extra_metadata}')
 
-            #     # update metadata due to subset
-            #     if box:
-            #         print('update metadata due to subset')
-            #         meta = attr.update_attribute4subset(meta, box)
+            # # update metadata due to resize
+            # # for low resolution ionosphere from isce2/topsStack
+            # if resize2shape:
+            #     print('update metadata due to resize')
+            #     meta = attr.update_attribute4resize(meta, resize2shape)
 
-            #     # update metadata due to multilook
-            #     if xstep * ystep > 1:
-            #         print('update metadata due to multilook')
-            #         meta = attr.update_attribute4multilook(meta, ystep, xstep)
+            # # update metadata due to subset
+            # if box:
+            #     print('update metadata due to subset')
+            #     meta = attr.update_attribute4subset(meta, box)
 
-                # write metadata to HDF5 file at the root level
-                self.metadata['FILE_TYPE'] = self.name
-                for key, value in self.metadata.items():
-                    f.attrs[key] = value
+            # # update metadata due to multilook
+            # if xstep * ystep > 1:
+            #     print('update metadata due to multilook')
+            #     meta = attr.update_attribute4multilook(meta, ystep, xstep)
 
-        # print(f'Finished writing to {outputFile}')
-        # return outputFile
+            # write metadata to HDF5 file at the root level
+            self.metadata['FILE_TYPE'] = self.name
+            for key, value in self.metadata.items():
+                f.attrs[key] = value
+
+        print(f'Finished writing to {outputFile}')
+        return outputFile
 
