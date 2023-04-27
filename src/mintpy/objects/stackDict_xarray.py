@@ -217,21 +217,10 @@ class ifgramStackXarrayDict:
     def __init__(self, stack: xr.Dataset, datasetDict, iDict: Dict, name: str='ifgramStack'):
         self.name = name
         self.datasetDict = datasetDict
-
         self.stack = stack
-
-        print(f"stack.variables: {stack.variables}")
-
-        # # DEV store copy to local
-        # import zarr
-        # compressor = zarr.Blosc(cname='zstd', clevel=3)
-        # encoding = {vname: {'compressor': compressor} for vname in self.stack.data_vars}
-        # self.stack.to_zarr(Path.cwd()/'store', group='sbas', mode='w', consolidated=True, encoding=encoding)
-
-
-        self.iDict = iDict
-
+        
         # retrieve subset bboxes from template
+        self.iDict = iDict
         self.iDict = read_subset_box_xarray(self.iDict, self.stack)
 
         self.sbas_pairs = iDict['mintpy.load.sbasPairList']
