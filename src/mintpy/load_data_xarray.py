@@ -1,3 +1,9 @@
+############################################################
+# Program is part of MintPy                                #
+# Copyright (c) 2013, Zhang Yunjun, Heresh Fattahi         #
+# Author: Alex Lewandowski 2023                            #
+############################################################
+
 from pathlib import Path
 from typing import Dict
 import xarray as xr
@@ -13,14 +19,12 @@ from mintpy.utils import ptime, readfile, utils, zarr_utils as ut
 from mintpy.utils import utils1 as ut1
 
 GEO_H5_PATH = Path.cwd()/"inputs/geometryGeo.h5"
+SBAS_H5_PATH = Path.cwd()/"inputs/ifgramStack.h5"
 
 IFG_XR_DSET_NAME2TEMPLATE_KEY = {
     'sbas_pair_list'  : 'mintpy.load.sbasPairList',
     'unwrapPhase'     : 'mintpy.load.unwVarName',
     'coherence'       : 'mintpy.load.corVarName',
-    # 'connectComponent': 'mintpy.load.connCompVarName',
-    # 'wrapPhase'       : 'mintpy.load.intVarName',
-    # 'magnitude'       : 'mintpy.load.magVarName',
 }
 
 GEOM_XR_DSET_NAME2TEMPLATE_KEY = {
@@ -30,8 +34,6 @@ GEOM_XR_DSET_NAME2TEMPLATE_KEY = {
     'waterMask'       : 'mintpy.load.waterMaskVarName',
 }
 
-###
-# TODO: add local zarr store path params
 ZARR_NAME2TEMPLATE_KEY = {
     'zarr_s3_uri'     : 'mintpy.load.s3URI',
     'local_zarr_dir' : 'mintpy.load.localZarrDir',
@@ -124,7 +126,7 @@ def load_data_xarray(iDict):
         except zarr.errors.PathNotFoundError:
             print('"sbas" group not found in zarr store')
             pass
-        
+
     ## search & write data files
     print('-'*50)
     print('updateMode : {}'.format(iDict['updateMode']))
@@ -142,23 +144,33 @@ def load_data_xarray(iDict):
     elif 'pix_box' in iDict.keys() and iDict['pix_box']:
         box = iDict['pix_box']
 
-    # geo_dict = geometryXarrayDict(geo_stack, GEOM_XR_DSET_NAME2TEMPLATE_KEY, iDict)
-    
-    # if load_data.run_or_skip(str(GEO_H5_PATH), geo_dict, geo_stack, box, **kwargs) == 'run':
-    #     geo_dict.write2hdf5(
-    #         GEO_H5_PATH, 
-    #         access_mode='w',
-    #         box=box,
-    #         xstep=iDict['xstep'],
-    #         ystep=iDict['ystep'],
-    #         compression='lzf',
-    #          )
+    geo_dict = geometryXarrayDict(geo_stack, GEOM_XR_DSET_NAME2TEMPLATE_KEY, iDict)
+    if load_data.run_or_skip(str(GEO_H5_PATH), geo_dict, geo_stack, box, **kwargs) == 'run':
+        geo_dict.write2hdf5(
+            GEO_H5_PATH, 
+            access_mode='w',
+            box=box,
+            xstep=iDict['xstep'],
+            ystep=iDict['ystep'],
+            compression='lzf',
+             )
+    else:
+        print("SKIPPING GEOMETRY")
         
-
-
     sbas_dict = ifgramStackXarrayDict(sbas_stack, IFG_XR_DSET_NAME2TEMPLATE_KEY, iDict)
+    if load_data.run_or_skip(str(SBAS_H5_PATH), sbas_dict, sbas_stack, box, **kwargs) == 'run':
+        sbas_dict.write2hdf5(
+            SBAS_H5_PATH, 
+            access_mode='w',
+            box=box,
+            xstep=iDict['xstep'],
+            ystep=iDict['ystep'],
+            compression='lzf',
+             )
+    else:
+        print("SKIPPING")
 
-    sbas_dict.write2hdf5(box=box)
+    # sbas_dict.write2hdf5(box=box)
         
     
 

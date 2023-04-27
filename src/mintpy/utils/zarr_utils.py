@@ -1,7 +1,7 @@
 ############################################################
 # Program is part of MintPy                                #
 # Copyright (c) 2013, Zhang Yunjun, Heresh Fattahi         #
-# Author: Zhang Yunjun, Heresh Fattahi, 2013               #
+# Author: Alex Lewandowski 2023                            #
 ############################################################
 
 import s3fs
