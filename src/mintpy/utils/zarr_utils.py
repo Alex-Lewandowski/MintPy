@@ -9,7 +9,7 @@ import xarray as xr
 from pathlib import Path
 from typing import Union
 
-def get_s3_zarr_store(s3_uri: str, group: str, profile: str='default') -> xr.Dataset:
+def get_s3_zarr_store(s3_uri: str, group: str, profile: str='default', **args) -> xr.Dataset:
     """
     Open a Zarr store in an AWS S3 bucket.
     Assumes that you have aws-cli configured with an 
@@ -26,9 +26,9 @@ def get_s3_zarr_store(s3_uri: str, group: str, profile: str='default') -> xr.Dat
 
     s3 = s3fs.S3FileSystem(profile=profile)
     store = s3fs.S3Map(root=s3_uri, s3=s3, check=False)
-    return xr.open_zarr(store=store, group=group)
+    return xr.open_zarr(store=store, group=group, **args)
 
-def get_local_zarr_store(store_path: str, group: Union[str, Path]=None) -> xr.Dataset:
+def get_local_zarr_store(store_path: str, group: Union[str, Path]=None, consolidated=True, **args) -> xr.Dataset:
     """
     Open a local Zarr store 
 
@@ -41,6 +41,6 @@ def get_local_zarr_store(store_path: str, group: Union[str, Path]=None) -> xr.Da
         an xarray.Dataset of zarr store
     """
 
-    return xr.open_zarr(store_path, group=group, consolidated=True)
+    return xr.open_zarr(store_path, group=group, consolidated=consolidated, **args)
 
    

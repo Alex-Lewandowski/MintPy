@@ -360,13 +360,10 @@ class ifgramStackXarrayDict:
                     ds.attrs['MODIFICATION_TIME'] = str(time.time())
                     prog_bar.close()
 
-            ##############################
+            #############################
             # 2D dataset containing reference and secondary dates of all pairs
             dsName = 'date'
-            # dsDataType = np.string_
-            # dsShape = (len(self.sbas_pairs), 2)
-            # print(f'create dataset /{dsName} of {str(dsDataType)} in size of {dsShape}')
-            f.create_dataset(dsName, data=self.sbas_pairs).to_numpy()
+            f.create_dataset(dsName, data=np.array(self.sbas_pairs, dtype=np.string_))
 
             # ###############################
             # # 1D dataset containing perpendicular baseline of all pairs
