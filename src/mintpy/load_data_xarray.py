@@ -97,8 +97,8 @@ def load_data_xarray(iDict):
                 geo_group
                 )
         except zarr.errors.PathNotFoundError:
-             print('"geometry" group not found in zarr store')
-             pass
+            print('"geometry" group not found in zarr store')
+            pass
         try:
             sbas_stack = ut.get_local_zarr_store(
                 iDict['mintpy.load.localZarrDir'],
@@ -115,8 +115,8 @@ def load_data_xarray(iDict):
                 iDict['mintpy.load.aws_profile']
                 )
         except zarr.errors.PathNotFoundError:
-             print('"geometry" group not found in zarr store')
-             pass
+            print('"geometry" group not found in zarr store')
+            pass
         try:
             sbas_stack = ut.get_s3_zarr_store(
                 iDict['mintpy.load.s3URI'],
