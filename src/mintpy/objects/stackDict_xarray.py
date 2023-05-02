@@ -102,6 +102,58 @@ class geometryXarrayDict:
         width = width // xstep
 
         return length, width
+    
+    def get_slant_range_distance(self, box=None, xstep=1, ystep=1):
+        """Generate 2D slant range distance if missing from input template file"""
+        print('prepare slantRangeDistance ...')
+        if 'Y_FIRST' in self.metadata.keys():
+            # for dataset in geo-coordinates, use:
+            # 1) incidenceAngle matrix if available OR
+            # 2) contant value from SLANT_RANGE_DISTANCE.
+            ds_name = 'incidenceAngle'
+            key = 'SLANT_RANGE_DISTANCE'
+            if ds_name in self.datasetDict.keys():
+                print(f'    geocoded input, use incidenceAngle from xarray.Dataset variable: {self.iDict[self.datasetDict[ds_name]]}')
+                inc_angle = self.stack[self.iDict[self.datasetDict[ds_name]]].to_numpy()
+                if self.metadata.get('PROCESSOR', 'isce') == 'hyp3_zarr' and self.metadata.get('UNIT', 'degrees').startswith('rad'):
+                    print('    convert incidence angle from Gamma to MintPy convention.')
+                    inc_angle[inc_angle == 0] = np.nan # convert the no-data-value from 0 to nan         
+                    inc_angle = 90. - (inc_angle * 180. / np.pi)    # hyp3/gamma to mintpy/isce2 convention
+                # inc angle -> slant range distance
+                data = ut.incidence_angle2slant_range_distance(self.metadata, inc_angle)
+
+            elif key in self.metadata.keys():
+                print(f'geocoded input, use contant value from metadata {key}')
+                length = int(self.metadata['LENGTH'])
+                width = int(self.metadata['WIDTH'])
+                range_dist = float(self.metadata[key])
+                data = np.ones((length, width), dtype=np.float32) * range_dist
+            else:
+                return None
+
+        else:
+            # for dataset in radar-coordinates, calculate 2D pixel-wise value from geometry
+            data = ut.range_distance(self.metadata,
+                                     dimension=2,
+                                     print_msg=False)
+
+        # subset
+        if box is not None:
+            data = data[box[1]:box[3],
+                        box[0]:box[2]]
+
+        # multilook
+        if xstep * ystep > 1:
+            # output size if x/ystep > 1
+            xsize = int(data.shape[1] / xstep)
+            ysize = int(data.shape[0] / ystep)
+
+            # sampling
+            data = data[int(ystep/2)::ystep,
+                        int(xstep/2)::xstep]
+            data = data[:ysize, :xsize]
+
+        return data
        
     def write2hdf5(self, outputFile='geometryRadar.h5', access_mode='w', box=None, xstep=1, ystep=1,
                    compression='lzf'):
@@ -193,6 +245,37 @@ class geometryXarrayDict:
                                       data=data,
                                       chunks=True,
                                       compression=compression)
+                
+
+            ###############################
+            # Generate Dataset if not existed in binary file: incidenceAngle, slantRangeDistance
+            
+            
+            print(self.datasetDict.keys())
+            
+            
+            if 'slantRangeDistance' not in self.datasetDict.keys() or self.iDict[self.datasetDict['slantRangeDistance']] != 'auto':
+                dsName = 'slantRangeDistance'
+                # Calculate data
+                data = self.get_slant_range_distance(box=box, xstep=xstep, ystep=ystep)
+
+                # Write dataset
+                if data is not None:
+                    dsShape = data.shape
+                    dsDataType = np.float32
+                    print(('create dataset /{d:<{w}} of {t:<25} in size of {s}'
+                           ' with compression = {c}').format(d=dsName,
+                                                             w=maxDigit,
+                                                             t=str(dsDataType),
+                                                             s=dsShape,
+                                                             c=str(compression)))
+                    ds = f.create_dataset(dsName,
+                                          data=data,
+                                          dtype=dsDataType,
+                                          chunks=True,
+                                          compression=compression)
+
+            ###############################
 
             # update due to subset
             self.metadata = attr.update_attribute4subset(self.metadata, box)
@@ -228,11 +311,11 @@ class ifgramStackXarrayDict:
             self.sbas_pairs = self.stack.pairs.to_numpy()
 
         self.ds_vars = {k:v for (k,v) in zip(iDict.keys(), iDict.values()) if k in datasetDict.values()}
-
+          
+        meta_vars = [i for i in stack.variables if i not in {k:v for (k,v) in zip(iDict.keys(), iDict.values()) if k in datasetDict.values()}.values() and i not in ['x', 'y']]
         self.metadata = {}
-        for m in stack.variables:
-            if not any(x in ['x', 'y', 'pairs'] for x in stack[m].coords):
-                self.metadata[m] = stack.isel(pairs=0)[m].to_numpy().tolist()
+        for m in meta_vars:
+            self.metadata[m] = stack.isel(pairs=0)[m].to_numpy().tolist()
 
     def get_size(self, dsName, box=None, xstep=1, ystep=1, geom_obj=None):
         """Get size in 3D"""
@@ -293,10 +376,15 @@ class ifgramStackXarrayDict:
             # 3D datasets containing unwrapPhase, coherence, waterMask(optional)
             for dsName in self.ds_vars:
                 if dsName != 'mintpy.load.sbasPairList':
+                    if dsName == 'mintpy.load.unwVarName':
+                        dsName_out = 'unwrapPhase'
+                    elif dsName == 'mintpy.load.corVarName':
+                        dsName_out = 'coherence'
                 
            
                     print(f"dsName: {dsName}")
-                    print(f"iDict[dsName]: {self.iDict[dsName]}")
+                    # print(f"iDict[dsName]: {self.iDict[dsName]}")
+
 
 
                     dsShape = (
@@ -310,7 +398,7 @@ class ifgramStackXarrayDict:
 
                     print((f'create dataset /{dsName:<{maxDigit}} of {str(dsDataType):<25} in size of {dsShape}'
                         ' with compression = {dsCompression}'))
-                    ds = f.create_dataset(self.iDict[dsName],
+                    ds = f.create_dataset(dsName_out,
                                         shape=dsShape,
                                         maxshape=(None, dsShape[1], dsShape[2]),
                                         dtype=dsDataType,
@@ -331,29 +419,43 @@ class ifgramStackXarrayDict:
                         else:
                             data = self.stack.sel(pairs=pair)[self.iDict[dsName]].to_numpy()
 
-                    # multilook
-                    if xstep * ystep > 1:
-                        if mli_method == 'nearest':
-                            # multilook - nearest resampling
-                            # output data size
-                            xsize = int(data.shape[1] / xstep)
-                            ysize = int(data.shape[0] / ystep)
-                            # sampling
-                            data = data[int(ystep/2)::ystep,
-                                        int(xstep/2)::xstep]
-                            data = data[:ysize, :xsize]
+                        # multilook
+                        if xstep * ystep > 1:
+                            if mli_method == 'nearest':
+                                # multilook - nearest resampling
+                                # output data size
+                                xsize = int(data.shape[1] / xstep)
+                                ysize = int(data.shape[0] / ystep)
+                                # sampling
+                                data = data[int(ystep/2)::ystep,
+                                            int(xstep/2)::xstep]
+                                data = data[:ysize, :xsize]
 
-                        else:
-                            # multilook - mean or median resampling
-                            data = multilook_data(data,
-                                                lks_y=ystep,
-                                                lks_x=xstep,
-                                                method=mli_method)
+                            else:
+                                # multilook - mean or median resampling
+                                data = multilook_data(data,
+                                                    lks_y=ystep,
+                                                    lks_x=xstep,
+                                                    method=mli_method)
 
                         # write
                         ds[i, :, :] = data
+                        
 
+  
+                    ds.attrs['WIDTH'] = ds[0].shape[1]
+                    ds.attrs['LENGTH'] = ds[0].shape[0]
                     ds.attrs['MODIFICATION_TIME'] = str(time.time())
+                    
+                    
+                    # ds.attrs['X_FIRST'] = self.metadata['X_FIRST'][0]
+                    # ds.attrs['Y_FIRST'] = self.metadata['Y_FIRST'][0]
+                    # ds.attrs['X_STEP'] = self.metadata['X_STEP'][0]
+                    # ds.attrs['Y_STEP'] = self.metadata['Y_STEP'][0]
+                    # ds.attrs['X_UNIT'] = self.metadata['X_UNIT'][0]
+                    # ds.attrs['Y_UNIT'] = self.metadata['Y_UNIT'][0]
+
+                    
                     prog_bar.close()
 
             #############################
@@ -361,7 +463,8 @@ class ifgramStackXarrayDict:
             dsName = 'date'
             dsDataType = np.string_
             print(f'create dataset /{dsName:<{maxDigit}} of {str(dsDataType):<25} in size of {self.sbas_pairs.shape}')
-            f.create_dataset(dsName, data=np.array(self.sbas_pairs, dtype=dsDataType))
+            sbas_pairs = [i.split('-') for i in self.sbas_pairs]
+            f.create_dataset(dsName, data=np.array(sbas_pairs, dtype=dsDataType))
 
             ###############################
             # 1D dataset containing perpendicular baseline of all pairs
@@ -395,8 +498,14 @@ class ifgramStackXarrayDict:
 
             # write metadata to HDF5 file at the root level
             self.metadata['FILE_TYPE'] = self.name
+            
+            print(self.metadata)
+            
             for key, value in self.metadata.items():
-                f.attrs[key] = value
+                if type(value) in [str, float, int]:
+                    f.attrs[key] = value
+                else:
+                    f.attrs[key] = value[0]
 
         print(f'Finished writing to {outputFile}')
         return outputFile
