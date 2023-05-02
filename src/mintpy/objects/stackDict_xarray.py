@@ -255,6 +255,7 @@ class geometryXarrayDict:
             
             
             if 'slantRangeDistance' not in self.datasetDict.keys() or self.iDict[self.datasetDict['slantRangeDistance']] != 'auto':
+                dsName = 'slantRangeDistance'
                 # Calculate data
                 data = self.get_slant_range_distance(box=box, xstep=xstep, ystep=ystep)
 
