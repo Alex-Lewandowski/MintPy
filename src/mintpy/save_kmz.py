@@ -24,6 +24,7 @@ from mintpy.utils import (
     ptime,
     readfile,
     utils as ut,
+    utils0 as ut0,
 )
 
 
@@ -233,6 +234,9 @@ def write_kmz_overlay(data, meta, out_file, inps):
     """
 
     south, north, west, east = ut.four_corners(meta)
+    if "UTM_ZONE" in meta.keys():
+        north, east = ut0.utm2latlon(meta, east, north)
+        south, west = ut0.utm2latlon(meta, west, south)
 
     # 1. Make PNG file - Data
     print('plotting data ...')
